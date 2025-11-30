@@ -52,11 +52,11 @@ app.get("/api/likes", (req, res) => res.json({ likes: STORE.likes }));
 // ---- Recommend: re-rank fresh headlines by user profile ----
 app.get("/api/recommend", async (req, res) => {
   if (!NEWS_API_KEY) return res.status(500).json({ error: "NEWS_API_KEY not set" });
-  const { q = "", country = "us", pageSize = 40 } = req.query;
+  const { q = "", country = "us", pageSize = 100 } = req.query;
 
-  const url = new URL("https://newsapi.org/v2/top-headlines");
+  const url = new URL("https://newsapi.org/v2/everything");
   if (q) url.searchParams.set("q", q);
-  if (country) url.searchParams.set("country", country);
+  //if (country) url.searchParams.set("country", country);
   url.searchParams.set("pageSize", pageSize);
   const resp = await fetch(url.toString(), { headers: { "X-Api-Key": NEWS_API_KEY } });
   const data = await resp.json();
