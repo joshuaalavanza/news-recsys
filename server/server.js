@@ -18,16 +18,25 @@ const STORE = { likes: [] };
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
-app.get("/api/top-headlines", async (req, res) => {
+app.get("/api/everything", async (req, res) => {
   if (!NEWS_API_KEY) return res.status(500).json({ error: "NEWS_API_KEY not set" });
-  const { q = "", country = "us", pageSize = 20 } = req.query;
-  const url = new URL("https://newsapi.org/v2/top-headlines");
+  const { q = "", pageSize = 20 } = req.query;
+  const url = new URL("https://newsapi.org/v2/everything");
   if (q) url.searchParams.set("q", q);
-  if (country) url.searchParams.set("country", country);
+  //if (country) url.searchParams.set("country", country);
   url.searchParams.set("pageSize", pageSize);
   const resp = await fetch(url.toString(), { headers: { "X-Api-Key": NEWS_API_KEY } });
   const data = await resp.json();
   res.json(data);
+});
+
+
+// ---- Remove Liked article ----
+app.post("/api/unlike", (req, res) => {
+  const art = req.body; // expects article with url
+  if (!art || !art.url) return res.status(400).json({ error: "missing article" });
+  STORE.likes = STORE.likes.filter(a => a.url !== art.url);
+  res.json({ ok: true, count: STORE.likes.length });
 });
 
 // ---- Likes API ----
