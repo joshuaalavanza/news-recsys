@@ -20,8 +20,95 @@ function ArticleCard({ a, onLike, isLiked = false }) {
 }
 
 export default function App() {
+  const [userId, setUserId] = useState(
+    () => localStorage.getItem("userId") || ""
+  );
+  const [authMode, setAuthMode] = useState("login"); // "login" | "register"
+  const [authUsername, setAuthUsername] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+
+  async function handleAuthSubmit(e) {
+    e.preventDefault();
+    setAuthError("");
+
+    const endpoint = authMode === "login" ? "/api/login" : "/api/register";
+
+    try {
+      const resp = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: authUsername, password: authPassword }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.error || "Auth failed");
+      }
+
+      localStorage.setItem("userId", data.userId);
+      setUserId(data.userId);
+    } catch (err) {
+      setAuthError(String(err.message || err));
+    }
+  }
+
+  function handleLogout() {
+    localStorage.removeItem("userId");
+    setUserId("");
+  }
+
+  // If not logged in, show login/register screen
+  if (!userId) {
+    return (
+      <div className="container">
+        <h1>News Recommender — Login</h1>
+        <div style={{ maxWidth: 400 }}>
+          <div style={{ marginBottom: "1rem" }}>
+            <button
+              onClick={() => setAuthMode("login")}
+              disabled={authMode === "login"}
+            >
+              Login
+            </button>
+            <button
+              onClick={() => setAuthMode("register")}
+              disabled={authMode === "register"}
+              style={{ marginLeft: ".5rem" }}
+            >
+              Register
+            </button>
+          </div>
+
+          <form onSubmit={handleAuthSubmit} style={{ display: "grid", gap: ".5rem" }}>
+            <input
+              placeholder="Username"
+              value={authUsername}
+              onChange={e => setAuthUsername(e.target.value)}
+            />
+            <input
+              placeholder="Password"
+              type="password"
+              value={authPassword}
+              onChange={e => setAuthPassword(e.target.value)}
+            />
+            <button type="submit">
+              {authMode === "login" ? "Login" : "Register"}
+            </button>
+          </form>
+
+          {authError && <p className="error" style={{ marginTop: ".5rem" }}>{authError}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  // If logged in, render your existing news UI:
+  return <NewsApp userId={userId} onLogout={handleLogout} />;
+}
+function NewsApp({ userId, onLogout }) {
   const [q, setQ] = useState("ai");
-  const [tab, setTab] = useState("search"); // "search" | "recommend" | "likes"
+  const [tab, setTab] = useState("search");
   const [loading, setLoading] = useState(false);
   const [articles, setArticles] = useState([]);
   const [likes, setLikes] = useState([]);
@@ -34,8 +121,10 @@ export default function App() {
   async function fetchSearch(query) {
     setLoading(true); setError("");
     try {
-      const url = `${API_BASE}/api/everything?q=${encodeURIComponent(query)}&country=us&pageSize=20`;
-      const resp = await fetch(url);
+      const url = `${API_BASE}/api/everything?q=${encodeURIComponent(query)}&pageSize=20`;
+      const resp = await fetch(url, {
+        headers: { "x-user-id": userId },
+      });
       const data = await resp.json();
       if (data.status === "error") throw new Error(data.message || "NewsAPI error");
       setArticles(data.articles || []);
@@ -44,15 +133,24 @@ export default function App() {
   }
 
   async function fetchLikes() {
-    const resp = await fetch(`${API_BASE}/api/likes`);
-    const data = await resp.json();
-    setLikes(data.likes || []);
+    try {
+      const resp = await fetch(`${API_BASE}/api/likes`, {
+        headers: { "x-user-id": userId },
+      });
+      const data = await resp.json();
+      setLikes(data.likes || []);
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   async function fetchRecs() {
     setLoading(true); setError("");
     try {
-      const resp = await fetch(`${API_BASE}/api/recommend?q=${encodeURIComponent(q)}&country=us&pageSize=40`);
+      const resp = await fetch(
+        `${API_BASE}/api/recommend?q=${encodeURIComponent(q)}&pageSize=40`,
+        { headers: { "x-user-id": userId } }
+      );
       const data = await resp.json();
       setArticles((data.articles || []).slice(0, 20));
     } catch (e) { setError(String(e)); setArticles([]); }
@@ -60,29 +158,34 @@ export default function App() {
   }
 
   async function toggleLike(a) {
-  const alreadyLiked = likes.some(like => like.url === a.url);
+    const liked = likes.some(item => item.url === a.url);
+    const endpoint = liked ? "/api/unlike" : "/api/like";
+    const payload = liked ? { url: a.url } : a;
 
-  const endpoint = alreadyLiked ? "/api/unlike" : "/api/like";
-  const body = alreadyLiked ? { url: a.url } : a;
+    try {
+      await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId,
+        },
+        body: JSON.stringify(payload),
+      });
 
-  await fetch(`${API_BASE}${endpoint}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  setLikes(prev =>
-    alreadyLiked
-      ? prev.filter(like => like.url !== a.url)
-      : [...prev, a]
-  );
-}
-
+      setLikes(prev =>
+        liked
+          ? prev.filter(item => item.url !== a.url)
+          : [...prev, a]
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  }
 
   useEffect(() => {
     fetchSearch(q);
     fetchLikes();
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (tab === "search") fetchSearch(q);
@@ -93,6 +196,12 @@ export default function App() {
   return (
     <div className="container">
       <h1>News Recommender — MVP</h1>
+
+      <div style={{ marginBottom: ".5rem" }}>
+        <small>Logged in as <b>{userId}</b> ·{" "}
+          <button onClick={onLogout}>Log out</button>
+        </small>
+      </div>
 
       <div className="controls">
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search topic..." />
@@ -107,11 +216,25 @@ export default function App() {
 
       {tab === "likes" ? (
         <ul className="grid">
-          {likes.map((a, i) => <ArticleCard key={i} a={a} onLike={toggleLike} isLiked={true}/>)}
+          {likes.map((a, i) => (
+            <ArticleCard
+              key={i}
+              a={a}
+              onLike={toggleLike}
+              isLiked={true}
+            />
+          ))}
         </ul>
       ) : (
         <ul className="grid">
-          {articles.map((a, i) => <ArticleCard key={i} a={a} onLike={toggleLike} isLiked={isArticleLiked(a)}/>)}
+          {articles.map((a, i) => (
+            <ArticleCard
+              key={i}
+              a={a}
+              onLike={toggleLike}
+              isLiked={isArticleLiked(a)}
+            />
+          ))}
         </ul>
       )}
     </div>
