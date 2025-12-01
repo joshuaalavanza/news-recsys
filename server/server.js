@@ -99,10 +99,12 @@ app.get("/api/recommend", async (req, res) => {
   const { q = "", country = "us", pageSize = 100 } = req.query;
 
   const url = new URL("https://newsapi.org/v2/top-headlines");
-  if (q) url.searchParams.set("q", q);
+  //if (q) url.searchParams.set("q", q);
+  url.searchParams.set("country", country);
   url.searchParams.set("pageSize", pageSize);
   const resp = await fetch(url.toString(), { headers: { "X-Api-Key": NEWS_API_KEY } });
   const data = await resp.json();
+  console.log(data);
 
   const user = getUserState(req);
   if (!user) return res.status(401).json({ error: "unauthorized" });
